@@ -1,0 +1,34 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "StartSessionsOnTheSimHostOnly",
+      "Effect": "Allow",
+      "Action": "ssm:StartSession",
+      "Resource": "arn:aws:ec2:us-west-2:<ACCOUNT_ID>:instance/*",
+      "Condition": {
+        "StringEquals": {
+          "ssm:resourceTag/spot-demo": "sim-host"
+        },
+        "BoolIfExists": {
+          "ssm:SessionDocumentAccessCheck": "true"
+        }
+      }
+    },
+    {
+      "Sid": "OnlyThePortForwardingDocument",
+      "Effect": "Allow",
+      "Action": "ssm:StartSession",
+      "Resource": "arn:aws:ssm:us-west-2:<ACCOUNT_ID>:document/SpotDemo-PortForward"
+    },
+    {
+      "Sid": "ManageOwnSessions",
+      "Effect": "Allow",
+      "Action": [
+        "ssm:TerminateSession",
+        "ssm:ResumeSession"
+      ],
+      "Resource": "arn:aws:ssm:*:<ACCOUNT_ID>:session/${aws:userid}-*"
+    }
+  ]
+}

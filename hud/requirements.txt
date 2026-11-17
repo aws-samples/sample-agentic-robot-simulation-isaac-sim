@@ -1,0 +1,17 @@
+# Presenter HUD runtime deps: the ranges we accept. This file is only the
+# input to the lock compile below; do not install from it. hud/Dockerfile
+# and the laptop instructions install hud/requirements.lock, which pins every package, dependencies
+# included, to one version with its hashes (T31). After changing a range,
+# regenerate the lock and rebuild:
+#   uv pip compile hud/requirements.txt --generate-hashes --python-version 3.12 \
+#     --python-platform x86_64-unknown-linux-gnu -o hud/requirements.lock
+# rclpy + message packages come from the ROS image, NOT pip.
+# Verified on the Mac with fastapi 0.141, uvicorn 0.54, websockets 16.1. No
+# numpy on purpose: pip-upgrading the apt-installed numpy on the ROS image
+# can break ROS Python packages.
+# pillow 13 fixes the 39 advisories open against 12.x (T32); stay below 14
+# until the HUD's camera path is re-tested on it.
+fastapi>=0.115,<1.0
+uvicorn>=0.30,<1.0
+websockets>=13,<17
+pillow>=13.0.0,<14

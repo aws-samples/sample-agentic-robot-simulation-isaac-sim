@@ -1,0 +1,24 @@
+{
+  "schemaVersion": "1.0",
+  "description": "Spot demo: port forwarding to the sim host's DCV (8443) or HUD (8080) only",
+  "sessionType": "Port",
+  "parameters": {
+    "portNumber": {
+      "type": "String",
+      "description": "Port on the sim host: 8443 (DCV) or 8080 (HUD)",
+      "allowedPattern": "^(8443|8080)$",
+      "default": "8080"
+    },
+    "localPortNumber": {
+      "type": "String",
+      "description": "Port on the presenter's machine: the same as portNumber (the HUD answers only localhost:8080)",
+      "allowedPattern": "^(8443|8080)$",
+      "default": "8080"
+    }
+  },
+  "properties": {
+    "portNumber": "{{ portNumber }}",
+    "type": "LocalPortForwarding",
+    "localPortNumber": "{{ localPortNumber }}"
+  }
+}

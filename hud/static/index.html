@@ -1,0 +1,148 @@
+<!doctype html>
+<!--
+  Presenter HUD for the Spot confined-space entry demo (served by hud/server.py).
+  Layout targets a 1920x1080 projector: left = permit + gas gauges, center =
+  camera + top-down map, right = robot status chips + mission/agent log.
+  No build step, no CDN: everything is same-origin so it works offline over
+  the SSM tunnel. Behavior lives in app.js, styling in style.css.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Spot confined space entry HUD</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="/static/app.js" defer></script>
+</head>
+<body class="is-offline">
+  <div class="hud">
+    <header class="topbar">
+      <div class="brand">
+        <h1 class="brand-title">Permit-required confined space entry</h1>
+        <p class="brand-sub">Spot quadruped &middot; crude oil tank cleanout doorway</p>
+      </div>
+      <div id="alarm-strip" class="alarm-strip" role="status" hidden></div>
+      <div id="guard-strip" class="guard-strip" role="alert" hidden></div>
+      <div id="incident" class="incident" role="status" hidden>
+        <div id="incident-reading" class="incident-reading"><span class="incident-tag">Trigger</span><span id="incident-trigger"></span><span id="incident-now" class="incident-now"></span></div>
+        <div id="incident-note" class="incident-note"></div>
+      </div>
+      <div class="conn">
+        <span id="mode-badge" class="badge badge-fake" hidden>SYNTHETIC DATA</span>
+        <span id="ingest-badge" class="badge badge-flood" role="status" hidden></span>
+        <span id="world-badge" class="badge badge-undisclosed" role="status" hidden></span>
+        <span id="guard" class="conn-pill guard-off" role="status" title="The agent's safety-guard heartbeat (payload/guard)">GUARD —</span>
+        <span id="conn" class="conn-pill conn-offline">CONNECTING</span>
+      </div>
+    </header>
+
+    <aside class="col col-left" aria-label="Permit and atmosphere">
+      <section class="panel permit" aria-labelledby="permit-h">
+        <h2 id="permit-h" class="panel-title">Entry permit</h2>
+        <div id="permit-state" class="permit-state permit-gray" role="status" aria-live="polite">NOT STARTED</div>
+        <div class="permit-meta">
+          <span id="permit-id"></span>
+          <span id="permit-since"></span>
+        </div>
+        <div id="permit-msg" class="permit-msg"></div>
+        <div class="checklist-head">
+          <span>Pre-entry checklist</span>
+          <span id="checklist-summary" class="checklist-summary">awaiting permit</span>
+        </div>
+        <ul id="checklist" class="checklist" aria-label="Permit checklist: isolation, lockout/tagout, attendant, rescue plan"></ul>
+      </section>
+
+      <section class="panel gases" aria-labelledby="gas-h">
+        <h2 id="gas-h" class="panel-title">Gas at robot <span class="panel-now">Now</span><span class="panel-note">OSHA App. E</span></h2>
+        <div id="vent" class="vent vent-unknown" aria-label="Forced ventilation (simulated)" aria-live="polite">
+          <div class="vent-row">
+            <span id="vent-label" class="vent-label">Forced ventilation</span>
+            <span id="vent-chip" class="vent-chip">—</span>
+          </div>
+          <div id="vent-sub" class="vent-sub" hidden></div>
+          <div class="vent-track"><div id="vent-fill" class="vent-fill"></div><div id="vent-res" class="vent-res" hidden></div></div>
+          <div id="vent-text" class="vent-text">No ventilation data</div>
+        </div>
+        <div id="gauges" class="gauges"></div>
+      </section>
+    </aside>
+
+    <main class="col col-center">
+      <section class="panel camera" aria-labelledby="cam-h">
+        <h2 id="cam-h" class="panel-title">Front-left body camera</h2>
+        <div class="camera-frame">
+          <img id="cam" alt="Live front-left body camera from the simulated Spot">
+          <div id="cam-overlay" class="cam-overlay">NO CAMERA SIGNAL</div>
+        </div>
+      </section>
+
+      <section class="panel map" aria-labelledby="map-h">
+        <h2 id="map-h" class="panel-title">Site map <span class="panel-note">top-down &middot; meters</span></h2>
+        <div class="map-frame">
+          <canvas id="map" role="img" aria-label="Top-down map: tank, cleanout doorway, planned waypoints, robot position and path"></canvas>
+        </div>
+        <ul class="map-legend" aria-hidden="true">
+          <li><span class="lg lg-spot"></span>Spot</li>
+          <li><span class="lg lg-trail"></span>Path walked</li>
+          <li><span class="lg lg-route"></span>Planned route</li>
+          <li><span class="lg lg-tank"></span>Tank shell</li>
+          <li><span class="lg lg-probe"></span>Probe points</li>
+        </ul>
+      </section>
+    </main>
+
+    <aside class="col col-right" aria-label="Robot status and mission log">
+      <section class="panel robot" aria-labelledby="robot-h">
+        <h2 id="robot-h" class="panel-title">Robot</h2>
+        <div id="chips" class="chips"></div>
+      </section>
+
+      <section class="panel probe" aria-labelledby="probe-h">
+        <h2 id="probe-h" class="panel-title">Door-mouth gas probe <span class="panel-note">2 depths &times; 3 heights &middot; worst per gas</span></h2>
+        <p class="probe-honest">Extendable gas probe (simulated; arm-mounted on the real robot): the readings are the simulator's stand-in for an arm-mounted gas probe.</p>
+        <div class="probe-meta">
+          <span id="probe-where">No probe result yet</span>
+          <span id="probe-verdict" class="probe-verdict" hidden></span>
+        </div>
+        <table id="probe-table" class="probe-table">
+          <thead>
+            <tr><th scope="col" title="Height above the floor · depth inside the door">Height · depth</th><th scope="col">O₂ %</th><th scope="col">LEL %</th><th scope="col">H₂S ppm</th><th scope="col">CO ppm</th></tr>
+          </thead>
+          <tbody id="probe-body"></tbody>
+        </table>
+      </section>
+
+      <section class="panel feed" aria-labelledby="feed-h">
+        <div class="feed-head">
+          <h2 id="feed-h" class="panel-title">Mission log <span class="panel-note">mission &middot; agent &middot; safety guard</span></h2>
+          <div class="feed-actions">
+            <a id="audit-dl" class="btn" href="/api/audit.jsonl" download
+               title="Last 200 events as received by this HUD (JSONL). The mission's full audit log is on the sim host: scripts/fetch-log.sh">Download audit log</a>
+            <a class="btn btn-quiet" href="/api/audit.csv" download title="Same events, flattened to CSV">CSV</a>
+          </div>
+        </div>
+        <ol id="feed" class="feed-list" role="log" aria-live="polite"></ol>
+      </section>
+    </aside>
+
+    <footer class="footer">
+      <span>Simulation &mdash; NVIDIA Isaac Sim on AWS</span>
+      <span>Gas readings simulated</span>
+      <span>Ventilation and gas probe simulated</span>
+      <span id="footer-mode" class="footer-mode"></span>
+    </footer>
+  </div>
+
+  <div id="flash" class="flash" role="alert" hidden>
+    <div class="flash-inner">
+      <div id="flash-title" class="flash-title">ALARM</div>
+      <div id="flash-reason" class="flash-reason"></div>
+      <div id="flash-reading" class="flash-reading" hidden></div>
+      <div id="flash-note" class="flash-note" hidden></div>
+      <div id="flash-detail" class="flash-detail" hidden></div>
+      <div class="flash-hint">Click or press Esc to dismiss</div>
+    </div>
+  </div>
+</body>
+</html>

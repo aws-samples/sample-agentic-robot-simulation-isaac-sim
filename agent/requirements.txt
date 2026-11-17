@@ -1,0 +1,18 @@
+# Operator-agent runtime deps: the ranges we accept. This file is only the
+# input to the lock compile below; do not install from it. agent/Dockerfile
+# installs agent/requirements.lock (into a venv with --system-site-packages on
+# ros:jazzy, Python 3.12), which pins every package, dependencies included,
+# to one version with its hashes (T31). After changing a range, regenerate
+# the lock and rebuild:
+#   uv pip compile agent/requirements.txt --generate-hashes --python-version 3.12 \
+#     --python-platform x86_64-unknown-linux-gnu -o agent/requirements.lock
+# rclpy + ROS message packages come from the ROS image and numpy from apt
+# (python3-numpy), NOT pip: pip-upgrading the apt-installed numpy can break
+# ROS Python packages. The Strands API used in spot_agent.py was verified
+# against strands-agents 1.57.1 with boto3/botocore 1.43.
+strands-agents>=1.57,<2
+boto3>=1.35,<2
+# Never imported here; strands-agents pulls it in (it allows >=1.23,<2.2).
+# 1.30 is the 1.x release that fixes the four advisories open against 2.1.1
+# (the 2.x fix, 2.2.0, is outside strands-agents' range) (T32).
+mcp>=1.30,<2

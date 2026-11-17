@@ -1,0 +1,6 @@
+moment probe      <- atmos_test_start   t=328.7796465560018 wall_t=1790526674.468 | capture 3.1 s rc=0 | Atmospheric test at (6.57, -0.02): O2 -> LEL -> H2S/CO (OSHA 1910.146 order), 4.
+moment fail       <- atmos_result       t=332.84383806699725 wall_t=1790526678.532 | capture 3.1 s rc=0 | Atmospheric test FAIL - H2S 51.8 ppm FAIL (limit < 10 ppm, worst at 0.2 m height
+moment retest     <- atmos_test_start   t=401.13589054799695 wall_t=1790526746.822 | capture 3.2 s rc=0 | Atmospheric test at (6.57, -0.03): O2 -> LEL -> H2S/CO (OSHA 1910.146 order), 4.
+moment retreat    <- alarm              t=953.090045507 wall_t=1790527298.779 | capture 3.1 s rc=0 | GAS ALARM: H2S 78.3 ppm >= 10 ppm
+moment after      <- retreat_complete   t=965.1492830419988 wall_t=1790527310.836 | capture 3.1 s rc=0 | Retreat complete: Spot is outside the permit space at the entry point
+screen_watch done: ['after', 'fail', 'probe', 'retest', 'retreat']

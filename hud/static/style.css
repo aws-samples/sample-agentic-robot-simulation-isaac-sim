@@ -1,0 +1,663 @@
+/*
+ * Presenter HUD styles (hud/static/index.html).
+ *
+ * Dark control-room palette so the red alarm state is unmistakable on a
+ * projector. Sizes are in rem and the root size scales with the viewport
+ * width, so the 1920x1080 layout also fits a DCV window or a laptop.
+ * State is never conveyed by color alone: every colored element also has a
+ * text label (OK / ALARM / STALE, permit names, chip values).
+ */
+
+:root {
+  --bg: #0c0f12;
+  --panel: #151a1f;
+  --panel-2: #1b2127;
+  --line: #29313a;
+  --text: #e8ebee;
+  --muted: #9aa4ad;
+  --dim: #69737c;
+
+  --gray: #56606a;
+  --amber: #f2a900;
+  --green: #1f8a4c;
+  --green-text: #4fd08a;
+  --blue: #2b6cd4;
+  --red: #c81f35;
+  --red-bright: #ff3b4f;
+  --cyan: #4fc3f7;
+
+  --radius: 6px;
+  --gap: 0.75rem;
+  --font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+}
+
+html {
+  /* 1920 px wide -> ~16 px; scales down for smaller windows. */
+  font-size: clamp(11px, 0.84vw, 20px);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  height: 100vh;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-variant-numeric: tabular-nums;
+}
+
+h1, h2, p { margin: 0; }
+
+.hud {
+  display: grid;
+  height: 100vh;
+  padding: var(--gap);
+  gap: var(--gap);
+  grid-template-columns: 22rem minmax(0, 1fr) 28rem;
+  grid-template-rows: 4rem minmax(0, 1fr) 1.75rem;
+  grid-template-areas:
+    "top top top"
+    "left center right"
+    "foot foot foot";
+}
+
+/* ---------- top bar ---------- */
+
+.topbar {
+  grid-area: top;
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  padding: 0 1rem;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.brand { min-width: 0; }
+.brand-title { font-size: 1.5rem; font-weight: 700; letter-spacing: 0.01em; }
+.brand-sub { font-size: 0.95rem; color: var(--muted); }
+
+.alarm-strip {
+  flex: 1;
+  min-width: 0;
+  padding: 0.5rem 1rem;
+  border-radius: var(--radius);
+  background: var(--red);
+  color: #fff;
+  font-size: 1.25rem;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.alarm-strip[hidden] { display: none; }
+
+/* Persistent incident summary (header) after an abort; the full-screen
+   flash only lasts 8 s. Hidden while the live alarm strip is showing. */
+.incident {
+  flex: 1;
+  min-width: 0;
+  padding: 0.3rem 0.9rem;
+  border-left: 6px solid var(--red-bright);
+  border-radius: var(--radius);
+  background: rgba(200, 31, 53, 0.28);
+  line-height: 1.25;
+}
+.incident[hidden], .incident [hidden] { display: none; }
+.incident-reading, .incident-note { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.incident-reading { font-size: 1.1rem; font-weight: 800; color: #fff; }
+/* "Trigger" = the reading that fired the alarm; "now" = the live gauge value
+   of the same gas (the two differed on one screen with no label). */
+.incident-tag {
+  margin-right: 0.5rem;
+  padding: 0 0.35rem;
+  border-radius: 3px;
+  background: var(--red-bright);
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  vertical-align: 0.1em;
+}
+.incident-now { margin-left: 0.6rem; font-weight: 600; color: var(--muted); }
+.incident-now:empty { display: none; }
+.incident-note { font-size: 1rem; color: var(--text); }
+
+.conn { margin-left: auto; display: flex; gap: 0.5rem; align-items: center; }
+
+.badge, .conn-pill {
+  padding: 0.3rem 0.75rem;
+  border-radius: 999px;
+  font-size: 0.9rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+.badge[hidden] { display: none; }
+.badge-fake { background: var(--amber); color: #1a1300; }
+/* T42: messages were dropped at the ingest limits (a flood was cut). */
+.badge-flood { background: rgba(242, 169, 0, 0.18); color: var(--amber); border: 1px solid var(--amber); }
+/* M23: an atmosphere change the simulator applied with no disclosure. */
+.badge-undisclosed { background: rgba(242, 169, 0, 0.18); color: var(--amber); border: 1px dashed var(--amber); }
+.conn-live { background: rgba(31, 138, 76, 0.25); color: var(--green-text); border: 1px solid var(--green); }
+.conn-polling { background: rgba(242, 169, 0, 0.18); color: var(--amber); border: 1px solid var(--amber); }
+.conn-offline { background: rgba(200, 31, 53, 0.2); color: var(--red-bright); border: 1px solid var(--red); }
+
+/* T16: the agent's safety-guard heartbeat. Always a pill; DOWN / NOT ARMED /
+   NOT RUNNING also take the header strip (red while Spot is inside). */
+.guard-ok { background: rgba(31, 138, 76, 0.25); color: var(--green-text); border: 1px solid var(--green); }
+.guard-standby { background: #2d343c; color: var(--muted); border: 1px solid var(--line); }
+.guard-warn { background: rgba(242, 169, 0, 0.18); color: var(--amber); border: 1px solid var(--amber); }
+.guard-bad { background: var(--red); color: #fff; border: 1px solid var(--red-bright); animation: guard-pulse 0.8s ease-in-out infinite alternate; }
+.guard-off { background: transparent; color: var(--dim); border: 1px solid var(--line); }
+.guard-strip {
+  flex: 1;
+  min-width: 0;
+  padding: 0.5rem 1rem;
+  border-left: 6px solid var(--amber);
+  border-radius: var(--radius);
+  background: rgba(242, 169, 0, 0.2);
+  color: var(--amber);
+  font-size: 1.25rem;
+  font-weight: 800;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.guard-strip[hidden] { display: none; }
+.guard-strip-alarm { border-left-color: var(--red-bright); background: var(--red); color: #fff; }
+body.guard-down .hud { outline: 6px solid var(--red-bright); outline-offset: -6px; }
+@keyframes guard-pulse {
+  from { box-shadow: 0 0 0 0 rgba(255, 59, 79, 0.0); }
+  to { box-shadow: 0 0 0 0.35rem rgba(255, 59, 79, 0.45); }
+}
+
+/* ---------- columns & panels ---------- */
+
+.col { display: flex; flex-direction: column; gap: var(--gap); min-height: 0; }
+.col-left { grid-area: left; overflow: hidden; }  /* never spill over the footer disclosures */
+.col-center { grid-area: center; }
+.col-right { grid-area: right; }
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 0.75rem 1rem;
+  min-height: 0;
+}
+
+.panel-title {
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 0.5rem;
+}
+.panel-note { font-weight: 500; letter-spacing: 0.02em; text-transform: none; color: var(--dim); margin-left: 0.5rem; }
+/* "Now" pairs with the header's "Trigger" tag: live values vs the reading
+   that fired an alarm. */
+.panel-now {
+  margin-left: 0.5rem;
+  padding: 0 0.35rem;
+  border-radius: 3px;
+  background: rgba(31, 138, 76, 0.35);
+  color: var(--green-text);
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+}
+
+/* Offline: dim live data so nobody reads frozen numbers as current. */
+body.is-offline .col { opacity: 0.55; }
+
+/* ---------- permit ---------- */
+
+/* One line: at 2rem "PRE-ENTRY TESTING" wrapped to two lines, and at
+   1920x1080 the left column then ran ~30 px over the footer, covering its
+   "Gas readings simulated" disclosure (presenter dry run 2026-09-27). */
+.permit-state {
+  padding: 0.7rem 0.75rem;
+  border-radius: var(--radius);
+  font-size: 1.55rem;
+  font-weight: 800;
+  line-height: 1.1;
+  text-align: center;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: #fff;
+  transition: background-color 0.3s;
+}
+.permit-gray { background: var(--gray); }
+.permit-amber { background: var(--amber); color: #1a1300; }
+.permit-green { background: var(--green); }
+.permit-blue { background: var(--blue); }
+.permit-red { background: var(--red); }
+
+.permit-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+  font-size: 0.95rem;
+  color: var(--muted);
+}
+.permit-msg {
+  margin-top: 0.25rem;
+  font-size: 1rem;
+  color: var(--text);
+  min-height: 1.3em;
+  /* Long mission reasons must not push the gauges off a 1080p screen. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.permit-msg[hidden] { display: none; }
+
+/* Pre-entry checklist: mark + label + text; never color alone. */
+.checklist-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-top: 0.6rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+.checklist-summary { letter-spacing: 0.04em; text-transform: none; font-size: 0.85rem; color: var(--muted); }
+.checklist-summary.sum-ok { color: var(--green-text); }
+.checklist-summary.sum-bad { color: var(--amber); }
+.checklist { margin: 0.3rem 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 0.2rem; }
+.check {
+  display: grid;
+  grid-template-columns: 1.3rem 6.2rem minmax(0, 1fr);
+  align-items: baseline;
+  gap: 0.35rem;
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+  background: var(--panel-2);
+  font-size: 0.9rem;
+}
+.check-mark { font-weight: 900; text-align: center; }
+.check-label { font-weight: 700; color: var(--muted); }
+.check-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.check-ok .check-mark { color: var(--green-text); }
+.check-bad .check-mark { color: var(--red-bright); }
+.check-bad .check-text { color: var(--red-bright); }
+.check-unknown .check-mark, .check-unknown .check-text { color: var(--dim); }
+
+
+/* ---------- ventilation (inside the atmosphere panel) ---------- */
+
+.vent {
+  margin-bottom: 0.6rem;
+  padding: 0.4rem 0.75rem 0.45rem;
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--gray);
+  border-radius: var(--radius);
+  background: var(--panel-2);
+}
+.vent-row { display: flex; justify-content: space-between; align-items: baseline; gap: 0.5rem; }
+.vent-label { font-size: 0.8rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--dim); }
+.vent-chip { min-width: 0; font-size: 0.95rem; font-weight: 800; letter-spacing: 0.04em; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.vent-track { position: relative; height: 0.5rem; margin: 0.3rem 0 0.2rem; border-radius: 3px; background: #242b33; }
+.vent-fill { position: absolute; top: 0; bottom: 0; left: 0; width: 0; border-radius: 3px; background: var(--muted); transition: width 0.4s linear; }
+.vent-res { position: absolute; top: -0.2rem; bottom: -0.2rem; width: 2px; margin-left: -1px; background: var(--green-text); }
+.vent-res[hidden] { display: none; }
+.vent-text { font-size: 0.8rem; line-height: 1.3; color: var(--muted); }
+.vent-sub { margin-top: 0.1rem; font-size: 0.9rem; font-weight: 700; line-height: 1.25; color: var(--amber); }
+.vent-sub[hidden] { display: none; }
+/* Purge hold: the mission refused entry on passing readings until the
+   ventilation purge reaches its target. Amber, never red: nothing failed. */
+.vent-hold { border-color: rgba(242, 169, 0, 0.55); border-left: 6px solid var(--amber); background: rgba(242, 169, 0, 0.12); }
+.vent-hold .vent-label { color: var(--amber); }
+.vent-hold .vent-chip { padding: 0 0.4rem; border-radius: 3px; background: var(--amber); color: #1a1300; }
+.vent-hold .vent-fill { background: var(--amber); }
+.vent-hold .vent-text { color: var(--text); }
+.vent-reached .vent-sub { color: var(--green-text); }
+.vent-reached .vent-chip { background: var(--green); color: #fff; }
+.vent-reached .vent-fill { background: var(--green-text); }
+.vent-on { border-left-color: var(--cyan); }
+.vent-on .vent-chip { color: var(--cyan); }
+.vent-on .vent-fill { background: var(--cyan); }
+.vent-off { border-left-color: var(--amber); }
+.vent-off .vent-chip { color: var(--amber); }
+.vent-off .vent-fill { background: var(--amber); }
+.vent-stale .vent-chip { color: var(--dim); }
+.vent-stale .vent-fill { opacity: 0.35; }
+
+/* ---------- gas gauges ---------- */
+
+.gases { flex: 1; display: flex; flex-direction: column; }
+.gauges { flex: 1; display: flex; flex-direction: column; gap: 0.4rem; min-height: 0; }
+
+/* Padding trimmed (was 0.4/0.35rem) so the four gauges fit a 1080p column
+   under a pre-entry permit (id, 2-line message, checklist). */
+.gauge {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 0.28rem 0.75rem 0.22rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel-2);
+}
+.gauge-row { display: flex; justify-content: space-between; align-items: baseline; }
+.gauge-name { font-size: 1.25rem; font-weight: 700; }
+.gauge-flag {
+  padding: 0.1rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  background: rgba(31, 138, 76, 0.25);
+  color: var(--green-text);
+}
+.gauge-value { margin: 0 0 0.3rem; }
+.gauge-num { font-size: 2.3rem; font-weight: 800; line-height: 1; }
+.gauge-unit { margin-left: 0.3rem; font-size: 1.1rem; color: var(--muted); }
+
+.gauge-track {
+  position: relative;
+  height: 0.9rem;
+  border-radius: 3px;
+  background: #242b33;
+}
+.gauge-band { position: absolute; top: 0; bottom: 0; background: rgba(31, 138, 76, 0.35); }
+.gauge-fill { position: absolute; top: 0; bottom: 0; left: 0; background: var(--text); opacity: 0.85; border-radius: 3px 0 0 3px; }
+.gauge-thr { position: absolute; top: -0.3rem; bottom: -0.3rem; width: 3px; margin-left: -1px; background: var(--red-bright); }
+.gauge-marker {
+  position: absolute;
+  top: -0.35rem;
+  bottom: -0.35rem;
+  width: 5px;
+  margin-left: -2px;
+  border-radius: 2px;
+  background: #fff;
+  box-shadow: 0 0 0 1px #000;
+}
+.gauge-scale { display: flex; justify-content: space-between; margin-top: 0.3rem; font-size: 0.8rem; color: var(--dim); }
+.gauge-limit { color: var(--muted); }
+
+.gauge.is-alarm { border-color: var(--red-bright); background: rgba(200, 31, 53, 0.28); }
+.gauge.is-alarm .gauge-num { color: var(--red-bright); }
+.gauge.is-alarm .gauge-flag { background: var(--red-bright); color: #fff; }
+.gauge.is-alarm .gauge-fill { background: var(--red-bright); opacity: 1; }
+/* Keep the limit visible when the red fill runs past it. */
+.gauge.is-alarm .gauge-thr { background: #fff; }
+
+.gauge.is-stale .gauge-num { color: var(--dim); }
+.gauge.is-stale .gauge-flag { background: #2d343c; color: var(--muted); }
+.gauge.is-stale .gauge-marker, .gauge.is-stale .gauge-fill { display: none; }
+
+/* ---------- camera ---------- */
+
+/* Camera vs map split: the map carries the route/retreat story, so it gets
+   nearly half the column (the 4:3 camera frame letterboxes anyway). */
+.camera { flex: 1.15; display: flex; flex-direction: column; }
+.camera-frame {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  border-radius: 4px;
+  background: #000;
+  overflow: hidden;
+}
+.camera-frame img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.camera-frame img:not([src]) { visibility: hidden; }
+.cam-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.6rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: var(--muted);
+  background: rgba(0, 0, 0, 0.6);
+}
+.cam-overlay[hidden] { display: none; }
+
+/* ---------- map ---------- */
+
+.map { flex: 1; display: flex; flex-direction: column; }
+.map-frame { position: relative; flex: 1; min-height: 0; }
+.map-frame canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+
+.map-legend {
+  display: flex;
+  gap: 1.25rem;
+  margin: 0.4rem 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+.map-legend li { display: flex; align-items: center; gap: 0.4rem; }
+.lg { display: inline-block; width: 1.25rem; height: 0; border-top: 3px solid; }
+.lg-spot { width: 0.8rem; height: 0.8rem; border: 0; background: #f4f6f8; clip-path: polygon(100% 50%, 0 0, 20% 50%, 0 100%); }
+.lg-trail { border-color: var(--cyan); }
+.lg-route { border-top-style: dashed; border-color: #7b8a98; }
+.lg-tank { border-color: #a4623f; }
+.lg-probe { width: 0.7rem; height: 0.7rem; border: 0; border-radius: 50%; background: var(--amber); }
+
+/* ---------- robot chips ---------- */
+
+.chips { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
+.chip {
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--gray);
+  border-radius: 4px;
+  background: var(--panel-2);
+}
+.chip-label { display: block; font-size: 0.75rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--dim); }
+.chip-value { display: block; font-size: 1.15rem; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chip-ok { border-left-color: var(--green); }
+.chip-ok .chip-value { color: var(--green-text); }
+.chip-warn { border-left-color: var(--amber); }
+.chip-warn .chip-value { color: var(--amber); }
+.chip-bad { border-left-color: var(--red-bright); background: rgba(200, 31, 53, 0.25); }
+.chip-bad .chip-value { color: #fff; }
+.chip-off .chip-value { color: var(--muted); }
+
+/* ---------- door-mouth probe ---------- */
+
+.probe { flex: none; }
+.probe-honest { margin: -0.3rem 0 0.3rem; font-size: 0.75rem; color: var(--dim); }
+.probe-meta { display: flex; min-width: 0; justify-content: space-between; align-items: center; gap: 0.5rem; font-size: 0.85rem; color: var(--muted); margin-bottom: 0.35rem; }
+.probe-verdict { padding: 0.05rem 0.5rem; border-radius: 4px; font-size: 0.8rem; font-weight: 800; letter-spacing: 0.06em; white-space: nowrap; }
+.probe-verdict[hidden] { display: none; }
+.pv-ok { background: rgba(31, 138, 76, 0.35); color: var(--green-text); }
+.pv-bad { background: var(--red); color: #fff; }
+.pv-warn { background: rgba(242, 169, 0, 0.2); color: var(--amber); border: 1px solid var(--amber); }
+.probe-table { width: 100%; border-collapse: separate; border-spacing: 2px; font-size: 0.95rem; table-layout: fixed; }
+.probe-table th, .probe-table td { padding: 0.15rem 0.35rem; text-align: right; border-radius: 3px; white-space: nowrap; }
+.probe-table thead th { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.04em; color: var(--dim); }
+.probe-table thead th:first-child { width: 31%; text-align: left; }  /* "0.2 m · 1.0 in" row labels */
+.probe-table tbody th { font-size: 0.85rem; }
+.probe-table tbody th { text-align: left; font-weight: 700; color: var(--muted); }
+.probe-table td { font-weight: 700; background: var(--panel-2); }
+.cell-ok { color: var(--green-text); }
+.cell-alarm { background: var(--red) !important; color: #fff; }
+.cell-na { color: var(--dim); }
+.probe-worst th, .probe-worst td { border-top: 2px solid var(--line); }
+.probe-worst th { color: var(--text); }
+
+/* ---------- event feed ---------- */
+
+.feed { flex: 1; display: flex; flex-direction: column; }
+.feed-head { display: flex; justify-content: space-between; align-items: baseline; gap: 0.5rem; }
+.feed-head .panel-title { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.feed-actions { display: flex; gap: 0.35rem; flex: none; }
+.btn {
+  padding: 0.2rem 0.6rem;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--panel-2);
+  color: var(--text);
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.btn:hover, .btn:focus-visible { border-color: var(--cyan); color: var(--cyan); outline: none; }
+.btn-quiet { color: var(--muted); }
+.feed-list {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  padding: 0 0.25rem 0 0;
+  list-style: none;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+/* Follow mode keeps the newest entry at the bottom, so the oldest visible
+   one is cut at the top edge: fade that edge instead of slicing a line. */
+.feed-list.is-clipped {
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 3rem);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 3rem);
+}
+
+.ev {
+  padding: 0.45rem 0.65rem;
+  border-left: 3px solid var(--line);
+  border-radius: 4px;
+  background: var(--panel-2);
+}
+.ev-meta { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; font-size: 0.8rem; color: var(--dim); }
+.ev-time { font-family: var(--mono); color: var(--dim); }
+.ev-src { font-weight: 800; letter-spacing: 0.08em; color: var(--muted); }
+.ev-kind { color: var(--dim); }
+.ev-msg { margin-top: 0.15rem; font-size: 1.05rem; line-height: 1.35; overflow-wrap: anywhere; }
+
+.ev-tag {
+  padding: 0 0.4rem;
+  border-radius: 3px;
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  background: #2d343c;
+  color: var(--muted);
+}
+.tag-pass { background: rgba(31, 138, 76, 0.35); color: var(--green-text); }
+.tag-fail { background: var(--red); color: #fff; }
+.tag-warn { background: rgba(242, 169, 0, 0.22); color: var(--amber); }
+.tag-permit { background: #2d343c; color: var(--text); }
+/* T3: a self-declared source outside the allowlist; shown, never trusted. */
+.tag-unverified { background: transparent; color: var(--amber); border: 1px dashed var(--amber); }
+.ev-unverified { border-left-style: dashed; }
+.tag-sim { background: #2d343c; color: var(--text); }
+.ev-undisclosed { border-left-color: var(--amber); border-left-style: dashed; }
+
+.src-mission { border-left-color: #5d7a96; }
+.src-guard { border-left-color: var(--amber); }  /* routine guard lines; alarms get .ev-guard */
+
+/* Agent speech: the "reasoning out loud" beat of the demo. */
+.ev-say { border-left-color: var(--cyan); background: #16242f; }
+.ev-say .ev-src { color: var(--cyan); }
+.ev-say .ev-msg { font-size: 1.15rem; }
+.ev-say .ev-msg::before { content: "\201C"; color: var(--cyan); }
+.ev-say .ev-msg::after { content: "\201D"; color: var(--cyan); }
+
+/* Tool calls: one compact monospace line. */
+.ev-tool {
+  display: flex;
+  gap: 0.5rem;
+  align-items: baseline;
+  padding: 0.2rem 0.65rem;
+  border-left-color: #3a444e;
+  background: transparent;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+.ev-code { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; color: var(--text); }
+
+.ev-permit.edge-permit-amber { border-left-color: var(--amber); }
+.ev-permit.edge-permit-green { border-left-color: var(--green); }
+.ev-permit.edge-permit-blue { border-left-color: var(--blue); }
+.ev-permit.edge-permit-red { border-left-color: var(--red-bright); }
+
+/* Safety guard / alarm events: red and impossible to miss. */
+.ev-guard { border-left: 6px solid var(--red-bright); background: rgba(200, 31, 53, 0.3); }
+.ev-guard .ev-src { color: #fff; }
+.ev-guard .ev-msg { font-size: 1.15rem; font-weight: 700; color: #fff; }
+
+/* ---------- footer ---------- */
+
+.footer {
+  grid-area: foot;
+  display: flex;
+  align-items: center;
+  gap: 2rem;
+  padding: 0 0.25rem;
+  font-size: 0.9rem;
+  color: var(--dim);
+}
+.footer-mode { margin-left: auto; }
+
+/* ---------- full-screen alarm flash ---------- */
+
+body.alarm-active .hud { outline: 6px solid var(--red-bright); outline-offset: -6px; }
+
+.flash {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(170, 10, 28, 0.86);
+  cursor: pointer;
+  animation: flash-pulse 0.7s ease-in-out 6 alternate;
+}
+.flash[hidden] { display: none; }
+.flash-inner { max-width: 80vw; text-align: center; color: #fff; }
+.flash-title { font-size: 6rem; font-weight: 900; letter-spacing: 0.04em; line-height: 1.05; }
+.flash-reason { margin-top: 1.5rem; font-size: 2.2rem; font-weight: 600; line-height: 1.3; }
+.flash-reading { margin-top: 1.5rem; font-size: 2.6rem; font-weight: 800; line-height: 1.25; }
+.flash-note { margin-top: 1.25rem; font-size: 2.2rem; font-weight: 600; line-height: 1.3; }
+.flash-detail { margin-top: 1rem; font-size: 1.4rem; font-weight: 500; opacity: 0.9; }
+.flash-reason[hidden], .flash-reading[hidden], .flash-note[hidden], .flash-detail[hidden] { display: none; }
+.flash-hint { margin-top: 2rem; font-size: 1rem; opacity: 0.75; }
+
+@keyframes flash-pulse {
+  from { background: rgba(200, 16, 36, 0.92); }
+  to { background: rgba(90, 4, 14, 0.8); }
+}
+
+/* Short windows (1280x720 DCV / laptop): the left column must still show
+   all four gauges above the footer, with the purge-hold card open. */
+@media (max-height: 800px) {
+  .panel { padding: 0.6rem 0.85rem; }
+  .panel-title { margin-bottom: 0.35rem; }
+  .permit-state { padding: 0.5rem 0.75rem; }
+  .checklist-head { margin-top: 0.4rem; }
+  .checklist { gap: 0.1rem; }
+  .vent { margin-bottom: 0.4rem; padding: 0.3rem 0.65rem 0.35rem; }
+  .gauges { gap: 0.3rem; }
+  .gauge { padding: 0.18rem 0.65rem 0.15rem; }
+  .gauge-num { font-size: 1.9rem; }
+  .gauge-value { margin-bottom: 0.2rem; }
+  .gauge-track { height: 0.75rem; }
+  .gauge-scale { margin-top: 0.15rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .flash { animation: none; }
+  .guard-bad { animation: none; }
+  .permit-state { transition: none; }
+}

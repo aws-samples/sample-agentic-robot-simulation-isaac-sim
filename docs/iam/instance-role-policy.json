@@ -1,0 +1,78 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "InvokeTheOneInferenceProfile",
+      "Effect": "Allow",
+      "Action": ["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"],
+      "Resource": "arn:aws:bedrock:us-west-2:<ACCOUNT_ID>:inference-profile/us.anthropic.claude-sonnet-5"
+    },
+    {
+      "Sid": "UnderlyingFoundationModelThroughThatProfileOnly",
+      "Effect": "Allow",
+      "Action": ["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"],
+      "Resource": "arn:aws:bedrock:*::foundation-model/anthropic.claude-sonnet-5",
+      "Condition": {
+        "StringEquals": {
+          "bedrock:InferenceProfileArn": "arn:aws:bedrock:us-west-2:<ACCOUNT_ID>:inference-profile/us.anthropic.claude-sonnet-5"
+        }
+      }
+    },
+    {
+      "Sid": "ApplyTheOneGuardrail",
+      "Effect": "Allow",
+      "Action": "bedrock:ApplyGuardrail",
+      "Resource": "arn:aws:bedrock:us-west-2:<ACCOUNT_ID>:guardrail/<GUARDRAIL_ID>"
+    },
+    {
+      "Sid": "ReadTheDcvLicence",
+      "Effect": "Allow",
+      "Action": "s3:GetObject",
+      "Resource": "arn:aws:s3:::dcv-license.us-west-2/*"
+    },
+    {
+      "Sid": "StreamSessionLogsToTheSessionLogGroupOnly",
+      "Effect": "Allow",
+      "Action": ["logs:CreateLogStream", "logs:PutLogEvents"],
+      "Resource": "arn:aws:logs:us-west-2:<ACCOUNT_ID>:log-group:/spot-demo/session-manager:log-stream:*"
+    },
+    {
+      "Sid": "ListTheSessionLogGroupStreams",
+      "Effect": "Allow",
+      "Action": "logs:DescribeLogStreams",
+      "Resource": [
+        "arn:aws:logs:us-west-2:<ACCOUNT_ID>:log-group:/spot-demo/session-manager",
+        "arn:aws:logs:us-west-2:<ACCOUNT_ID>:log-group:/spot-demo/session-manager:*"
+      ]
+    },
+    {
+      "Sid": "CheckTheSessionLogGroupIsEncrypted",
+      "Effect": "Allow",
+      "Action": "logs:DescribeLogGroups",
+      "Resource": "*"
+    },
+    {
+      "Sid": "EncryptSessionLogsThroughCloudWatchLogsOnly",
+      "Effect": "Allow",
+      "Action": ["kms:GenerateDataKey", "kms:Decrypt"],
+      "Resource": "arn:aws:kms:us-west-2:<ACCOUNT_ID>:key/<SESSION_LOG_KEY_ID>",
+      "Condition": {
+        "StringEquals": {
+          "kms:ViaService": "logs.us-west-2.amazonaws.com",
+          "kms:EncryptionContext:aws:logs:arn": "arn:aws:logs:us-west-2:<ACCOUNT_ID>:log-group:/spot-demo/session-manager"
+        }
+      }
+    },
+    {
+      "Sid": "DescribeTheSessionLogKeyThroughCloudWatchLogsOnly",
+      "Effect": "Allow",
+      "Action": "kms:DescribeKey",
+      "Resource": "arn:aws:kms:us-west-2:<ACCOUNT_ID>:key/<SESSION_LOG_KEY_ID>",
+      "Condition": {
+        "StringEquals": {
+          "kms:ViaService": "logs.us-west-2.amazonaws.com"
+        }
+      }
+    }
+  ]
+}
