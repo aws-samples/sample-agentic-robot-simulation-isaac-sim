@@ -1,0 +1,312 @@
+AWSTemplateFormatVersion: "2010-09-09"
+# cost-guardrails.yaml -- optional cost and availability guardrails for the sim host (T39).
+#
+# Sample infrastructure: review it before you deploy it, in the account and Region of the
+# sim host. It never creates, modifies or deletes the instance itself; it only watches it.
+# What it creates and why (infra/README.md has the deploy, check and delete commands):
+#   * MonthlyCostBudget: an AWS Budgets COST budget on the WHOLE ACCOUNT, emailing at 80 %
+#     and 100 % of actual spend and at 100 % of forecast spend. Account-wide, not a tagged
+#     subset, because the agent calls Amazon Bedrock through a system-defined cross-Region
+#     inference profile, whose usage carries no resource tags (only application inference
+#     profiles, Projects or IAM principal attribution do), cost allocation tags are not
+#     retroactive, and the volume, NAT gateway and secret bill outside the instance anyway.
+#     Use a dedicated account for the demo. Credits and refunds are excluded, so the budget
+#     tracks what the resources cost even in an account with credits.
+#   * IdleStopAlarm: stops the instance (the EC2 stop alarm action) when its average
+#     CPUUtilization stays below IdleCpuPercent for IdlePeriods consecutive 5-minute periods
+#     (basic monitoring), i.e. nothing is running. The periods while the instance is stopped
+#     count as not idle (TreatMissingData notBreaching), so a host started again gets the
+#     whole window before the alarm can stop it. The host-side check host/idle_stop.sh is
+#     the finer control; this alarm is the backstop that needs nothing on the host.
+#   * InstanceCheckRebootAlarm: reboots the instance after 3 consecutive minutes of a failed
+#     instance status check (StatusCheckFailed_Instance), as the CloudWatch guide recommends.
+#   * SystemCheckAlarm: notifies on 2 consecutive minutes of a failed system status check
+#     (StatusCheckFailed_System), and also takes the EC2 recover action when
+#     SystemCheckAction is "recover". The g6 family supports neither CloudWatch action based
+#     recovery nor simplified automatic recovery (neither list in the EC2 User Guide names
+#     G6, and both exclude instances with instance store volumes, which g6.4xlarge has), so
+#     the default is "notify": stop and start the instance to move it to new hardware
+#     (scripts/start-host.sh).
+#   * AlarmTopic, its email subscription, its access policy and AlarmTopicKey: the alarms'
+#     notifications. A customer managed key, because CloudWatch cannot publish to a topic
+#     encrypted with the AWS managed alias/aws/sns key.
+# Alarms with EC2 actions use the service-linked role AWSServiceRoleForCloudWatchEvents,
+# which CloudWatch creates when the first such alarm is created (the deployer needs
+# iam:CreateServiceLinkedRole). Every resource is deleted with the stack: the KMS key is
+# scheduled for deletion after 7 days; the role and the instance are not touched.
+Description: >-
+  Spot demo sim host (optional sample, threat model T39): an account cost budget with
+  actual and forecast email alerts, an idle-stop alarm, and status-check alarms with
+  encrypted email notifications. Review before use.
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label: {default: "Required"}
+        Parameters: [InstanceId, MonthlyBudgetUSD, NotificationEmail]
+      - Label: {default: "Idle stop (the alarm; host/idle_stop.sh is separate)"}
+        Parameters: [IdleCpuPercent, IdlePeriods]
+      - Label: {default: "Status checks"}
+        Parameters: [SystemCheckAction]
+
+Parameters:
+  InstanceId:
+    Type: AWS::EC2::Instance::Id
+    Description: The sim host's instance id (i-...), in this stack's Region.
+  MonthlyBudgetUSD:
+    Type: Number
+    MinValue: 1
+    MaxValue: 100000
+    Description: >-
+      Monthly cost budget for the whole account, in USD. The host costs about 1.32 USD an
+      hour while running (about 966 USD for a month left on) plus about 16 USD a month
+      for its volume; size this to your expected demo hours.
+  NotificationEmail:
+    Type: String
+    AllowedPattern: "^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$"
+    ConstraintDescription: one email address
+    Description: >-
+      Address for the budget alerts and the alarm notifications. The alarm topic sends a
+      subscription confirmation first; the budget emails need none.
+  IdleCpuPercent:
+    Type: Number
+    Default: 5
+    MinValue: 1
+    MaxValue: 50
+    Description: >-
+      Average CPUUtilization (percent) below which a 5-minute period counts as idle. Not
+      measured for this demo: check the instance's CPUUtilization graph for an idle period
+      and for a running sim, and choose a value between them.
+  IdlePeriods:
+    Type: Number
+    Default: 24
+    MinValue: 6
+    MaxValue: 288
+    Description: >-
+      Consecutive idle 5-minute periods before the instance is stopped (24 = 2 hours).
+      288 (one day) is the CloudWatch limit for periods shorter than an hour.
+  SystemCheckAction:
+    Type: String
+    Default: notify
+    AllowedValues: [notify, recover]
+    Description: >-
+      On a failed system status check: notify only (the g6 family does not support the
+      recover action), or also recover, only for an instance type whose
+      AutoRecoverySupported is true (aws ec2 describe-instance-types).
+
+Conditions:
+  RecoverOnSystemCheck: !Equals [!Ref SystemCheckAction, recover]
+
+Resources:
+  MonthlyCostBudget:
+    Type: AWS::Budgets::Budget
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      Budget:
+        BudgetName: !Sub "${AWS::StackName}-monthly-cost"
+        BudgetType: COST
+        TimeUnit: MONTHLY
+        BudgetLimit:
+          Amount: !Ref MonthlyBudgetUSD
+          Unit: USD
+        CostTypes:
+          IncludeCredit: false
+          IncludeRefund: false
+      NotificationsWithSubscribers:
+        - Notification:
+            NotificationType: ACTUAL
+            ComparisonOperator: GREATER_THAN
+            Threshold: 80
+            ThresholdType: PERCENTAGE
+          Subscribers:
+            - SubscriptionType: EMAIL
+              Address: !Ref NotificationEmail
+        - Notification:
+            NotificationType: ACTUAL
+            ComparisonOperator: GREATER_THAN
+            Threshold: 100
+            ThresholdType: PERCENTAGE
+          Subscribers:
+            - SubscriptionType: EMAIL
+              Address: !Ref NotificationEmail
+        - Notification:
+            NotificationType: FORECASTED
+            ComparisonOperator: GREATER_THAN
+            Threshold: 100
+            ThresholdType: PERCENTAGE
+          Subscribers:
+            - SubscriptionType: EMAIL
+              Address: !Ref NotificationEmail
+
+  AlarmTopicKey:
+    Type: AWS::KMS::Key
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      Description: !Sub "Encrypts the ${AWS::StackName} alarm notification topic"
+      EnableKeyRotation: true
+      PendingWindowInDays: 7
+      KeyPolicy:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AccountAdministers
+            Effect: Allow
+            Principal:
+              AWS: !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:root"
+            Action: "kms:*"
+            Resource: "*"
+          - Sid: ThisStacksAlarmsPublish
+            Effect: Allow
+            Principal:
+              Service: cloudwatch.amazonaws.com
+            Action:
+              - kms:Decrypt
+              - kms:GenerateDataKey*
+            Resource: "*"
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+              ArnLike:
+                aws:SourceArn: !Sub "arn:${AWS::Partition}:cloudwatch:${AWS::Region}:${AWS::AccountId}:alarm:${AWS::StackName}-*"
+
+  AlarmTopic:
+    Type: AWS::SNS::Topic
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      DisplayName: Spot demo host alarms
+      KmsMasterKeyId: !Ref AlarmTopicKey
+
+  AlarmTopicPolicy:
+    Type: AWS::SNS::TopicPolicy
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      Topics: [!Ref AlarmTopic]
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: ThisStacksAlarmsPublish
+            Effect: Allow
+            Principal:
+              Service: cloudwatch.amazonaws.com
+            Action: sns:Publish
+            Resource: !Ref AlarmTopic
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+              ArnLike:
+                aws:SourceArn: !Sub "arn:${AWS::Partition}:cloudwatch:${AWS::Region}:${AWS::AccountId}:alarm:${AWS::StackName}-*"
+
+  AlarmEmail:
+    Type: AWS::SNS::Subscription
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      TopicArn: !Ref AlarmTopic
+      Protocol: email
+      Endpoint: !Ref NotificationEmail
+
+  IdleStopAlarm:
+    Type: AWS::CloudWatch::Alarm
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      AlarmName: !Sub "${AWS::StackName}-idle-stop"
+      AlarmDescription: >-
+        Stops the Spot demo sim host after its average CPU stayed below the idle threshold
+        for the whole idle window (T39). Start it again with scripts/start-host.sh.
+      Namespace: AWS/EC2
+      MetricName: CPUUtilization
+      Dimensions:
+        - Name: InstanceId
+          Value: !Ref InstanceId
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: !Ref IdlePeriods
+      DatapointsToAlarm: !Ref IdlePeriods
+      ComparisonOperator: LessThanThreshold
+      Threshold: !Ref IdleCpuPercent
+      # A stopped host sends no datapoints. notBreaching counts those periods as not idle;
+      # with missing they were skipped, the low datapoints of the host's last idle hour
+      # filled the window, and the alarm stopped the host right after it was started
+      # again (seen in an account, 2026-11-01).
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Sub "arn:${AWS::Partition}:automate:${AWS::Region}:ec2:stop"
+        - !Ref AlarmTopic
+
+  InstanceCheckRebootAlarm:
+    Type: AWS::CloudWatch::Alarm
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      AlarmName: !Sub "${AWS::StackName}-instance-check-reboot"
+      AlarmDescription: >-
+        Reboots the Spot demo sim host after 3 minutes of a failed instance status check
+        (T39). Containers do not restart on their own: re-apply host/imds_guard.sh and start
+        the demo again.
+      Namespace: AWS/EC2
+      MetricName: StatusCheckFailed_Instance
+      Dimensions:
+        - Name: InstanceId
+          Value: !Ref InstanceId
+      Statistic: Minimum
+      Period: 60
+      EvaluationPeriods: 3
+      DatapointsToAlarm: 3
+      ComparisonOperator: GreaterThanThreshold
+      Threshold: 0
+      TreatMissingData: missing
+      AlarmActions:
+        - !Sub "arn:${AWS::Partition}:automate:${AWS::Region}:ec2:reboot"
+        - !Ref AlarmTopic
+
+  SystemCheckAlarm:
+    Type: AWS::CloudWatch::Alarm
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      AlarmName: !Sub "${AWS::StackName}-system-check"
+      AlarmDescription: >-
+        The Spot demo sim host failed its system status check for 2 minutes (T39). Unless
+        the recover action is configured (instance types that support it only; g6 does
+        not), stop and start the instance to move it to new hardware.
+      Namespace: AWS/EC2
+      MetricName: StatusCheckFailed_System
+      Dimensions:
+        - Name: InstanceId
+          Value: !Ref InstanceId
+      Statistic: Minimum
+      Period: 60
+      EvaluationPeriods: 2
+      DatapointsToAlarm: 2
+      ComparisonOperator: GreaterThanThreshold
+      Threshold: 0
+      TreatMissingData: missing
+      AlarmActions: !If
+        - RecoverOnSystemCheck
+        - - !Sub "arn:${AWS::Partition}:automate:${AWS::Region}:ec2:recover"
+          - !Ref AlarmTopic
+        - - !Ref AlarmTopic
+
+Outputs:
+  BudgetName:
+    Description: The account cost budget (AWS Budgets; email alerts at 80 % and 100 % actual, 100 % forecast).
+    Value: !Ref MonthlyCostBudget
+  IdleStopAlarmName:
+    Description: Stops the instance after the idle window.
+    Value: !Ref IdleStopAlarm
+  InstanceCheckRebootAlarmName:
+    Description: Reboots the instance on a failed instance status check.
+    Value: !Ref InstanceCheckRebootAlarm
+  SystemCheckAlarmName:
+    Description: Notifies (or recovers, if configured) on a failed system status check.
+    Value: !Ref SystemCheckAlarm
+  AlarmTopicArn:
+    Description: The encrypted SNS topic the alarms notify; confirm its email subscription.
+    Value: !Ref AlarmTopic
+  AlarmTopicKeyArn:
+    Description: The customer managed KMS key that encrypts the topic.
+    Value: !GetAtt AlarmTopicKey.Arn

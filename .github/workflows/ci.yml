@@ -1,0 +1,121 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  # Weekly, so a newly published advisory against a locked package fails the
+  # dependency audit even when nothing is pushed (threat model T32).
+  schedule:
+    - cron: "17 6 * * 1"
+
+# Read-only token for every job. Nothing here pushes, comments or publishes, and on a
+# public repository a pull request from a fork must not get a writable GITHUB_TOKEN.
+# The trigger is pull_request, never pull_request_target, so fork code never runs
+# with this repository's secrets (threat model T33).
+permissions:
+  contents: read
+
+# Every action is pinned to a full commit SHA, with the release it was tagged as in a
+# trailing comment: a tag can be moved to other code, a commit cannot. Dependabot
+# (.github/dependabot.yml) proposes the updates. The Python packages are the ones the
+# agent and HUD images install, from tests/requirements-ci.lock, hash-checked.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    name: Unit tests
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: "0.12.19"
+
+      - name: Install the locked dependencies (hashes required)
+        run: |
+          uv venv --python 3.12 .venv
+          uv pip install --python .venv/bin/python --require-hashes --no-deps \
+            --only-binary :all: -r tests/requirements-ci.lock
+
+      - name: Unit tests
+        # A slower scaled clock for the threaded mission tests on shared runners
+        # (tests/test_mission.py, SPOT_TEST_SLOWDOWN).
+        env:
+          SPOT_TEST_SLOWDOWN: "2"
+        run: .venv/bin/python -m unittest discover -s tests
+
+  checks:
+    name: ShellCheck and threat-model citations
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: ShellCheck (warnings and errors)
+        run: |
+          shellcheck --version
+          mapfile -t scripts < <(git ls-files '*.sh')
+          test "${#scripts[@]}" -gt 0   # an empty list must fail, not pass
+          shellcheck -x --severity=warning "${scripts[@]}"
+
+      - name: Every path:line citation in the threat model resolves
+        # A shallow checkout (and the published repository) has no pre-publication
+        # history: citations pinned to those revisions are counted, not checked.
+        run: python3 scripts/check_citations.py --allow-missing-revisions docs/security/THREAT_MODEL.md
+
+  audit:
+    name: Dependency audit
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: "0.12.19"
+
+      - name: Install pip-audit (hashes required)
+        run: |
+          uv venv --python 3.12 .audit
+          uv pip install --python .audit/bin/python --require-hashes --no-deps \
+            --only-binary :all: -r tests/requirements-audit.lock
+
+      - name: No known vulnerability in what the images install
+        # The images install exactly these locks; --strict fails on a package the
+        # advisory databases cannot look up.
+        run: |
+          .audit/bin/pip-audit --strict --disable-pip --require-hashes \
+            -r agent/requirements.lock -r hud/requirements.lock
+
+      - name: No Medium or High in the shipped code, no High in the tests
+        # Every Medium this repository has is in tests/ (B103 executable-mode fakes,
+        # B108 temp paths), so the shipped code is gated at Medium and the tests at
+        # High. "0 High anywhere" is the exit criterion this enforces (T33).
+        run: |
+          .audit/bin/bandit -q -r . --exclude ./tests,./.audit --severity-level medium
+          .audit/bin/bandit -q -r tests --severity-level high
+
+      - name: No secret in the working tree
+        # gitleaks is pinned by release checksum, not by tag: a tag can be moved, a
+        # sha256 cannot. It reports nothing on this repository, so it needs no allowlist
+        # and has no baseline to drift -- anything it finds is new. Only the working tree
+        # is scanned: a CI clone is shallow, so a history scan here would cover an
+        # arbitrary depth and say more than it checked. The published export's history is
+        # one commit and prepare.sh scans it (M34).
+        run: |
+          curl -sSfL -o /tmp/gitleaks.tar.gz \
+            https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz
+          echo "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  /tmp/gitleaks.tar.gz" | sha256sum -c -
+          tar -xzf /tmp/gitleaks.tar.gz -C /tmp gitleaks
+          /tmp/gitleaks dir . --no-banner --redact

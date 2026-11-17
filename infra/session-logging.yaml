@@ -1,0 +1,90 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  Spot demo (threat model T38): the CloudWatch Logs log group that Session Manager
+  streams operator sessions to (docs/iam/session-preferences.json), encrypted with a
+  KMS key that CloudWatch Logs may use for this log group only. The operator console
+  prints the mission log's chain head into those sessions, so this log group holds the
+  off-host copy that agent/mission.py --verify checks a mission log against. Both
+  resources are retained when the stack is deleted (they hold the audit trail).
+
+Parameters:
+  LogGroupName:
+    Type: String
+    Default: /spot-demo/session-manager
+    AllowedPattern: "^[A-Za-z0-9_./#-]{1,512}$"
+    Description: >-
+      Log group for Session Manager session data. The shipped
+      docs/iam/session-preferences.json and docs/iam/instance-role-policy.json name the
+      default; change all three together.
+  RetentionInDays:
+    Type: Number
+    Default: 365
+    AllowedValues: [365, 400, 545, 731, 1096, 1827, 2192, 2557, 2922, 3288, 3653]
+    Description: Days CloudWatch Logs keeps session data (at least one year).
+
+Resources:
+  SessionLogKey:
+    Type: AWS::KMS::Key
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      Description: Spot demo, Session Manager session logs (CloudWatch Logs, one log group)
+      EnableKeyRotation: true
+      KeySpec: SYMMETRIC_DEFAULT
+      KeyUsage: ENCRYPT_DECRYPT
+      KeyPolicy:
+        Version: "2012-10-17"
+        Statement:
+          # The account administers the key, and IAM policies grant its use (the
+          # instance role's statements in docs/iam/instance-role-policy.json).
+          - Sid: AccountAdministersTheKeyThroughIam
+            Effect: Allow
+            Principal:
+              AWS: !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:root"
+            Action: "kms:*"
+            Resource: "*"
+          # CloudWatch Logs in this Region, for this one log group (its ARN is the
+          # encryption context CloudWatch Logs uses).
+          - Sid: CloudWatchLogsUsesTheKeyForTheSessionLogGroupOnly
+            Effect: Allow
+            Principal:
+              Service: !Sub "logs.${AWS::Region}.amazonaws.com"
+            Action:
+              - kms:Encrypt
+              - kms:Decrypt
+              - kms:ReEncrypt*
+              - kms:GenerateDataKey*
+              - kms:Describe*
+            Resource: "*"
+            Condition:
+              StringEquals:
+                kms:EncryptionContext:aws:logs:arn: !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:${LogGroupName}"
+
+  SessionLogKeyAlias:
+    Type: AWS::KMS::Alias
+    Properties:
+      AliasName: alias/spot-demo-session-manager
+      TargetKeyId: !Ref SessionLogKey
+
+  SessionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Ref LogGroupName
+      KmsKeyId: !GetAtt SessionLogKey.Arn
+      RetentionInDays: !Ref RetentionInDays
+
+Outputs:
+  LogGroupName:
+    Description: cloudWatchLogGroupName in docs/iam/session-preferences.json
+    Value: !Ref SessionLogGroup
+  LogGroupArn:
+    Description: The log group (the instance role may write to its streams only)
+    Value: !GetAtt SessionLogGroup.Arn
+  KeyArn:
+    Description: The key; its key ID replaces <SESSION_LOG_KEY_ID> in docs/iam/instance-role-policy.json
+    Value: !GetAtt SessionLogKey.Arn
+  KeyId:
+    Description: The key ID alone
+    Value: !Ref SessionLogKey

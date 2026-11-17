@@ -1,0 +1,8 @@
+# The dependency audit CI runs on the image locks, and the same job runs the code
+# scanner a contributor's merge request has to pass (threat model T32, T33). Compiled
+# into tests/requirements-audit.lock with hashes, like every other lock here.
+# bandit is a Python package on purpose: a pinned wheel with a hash is auditable. The
+# secret scanner in that job is gitleaks, pinned by release checksum in the CI files,
+# because it has no baseline to drift and currently reports nothing at all.
+pip-audit
+bandit

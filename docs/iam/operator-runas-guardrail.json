@@ -1,0 +1,32 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "NoSettingOrRemovingTheRunAsTagOnUsersOrRoles",
+      "Effect": "Deny",
+      "Action": [
+        "iam:TagRole",
+        "iam:UntagRole",
+        "iam:TagUser",
+        "iam:UntagUser"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "ForAnyValue:StringEquals": {
+          "aws:TagKeys": "SSMSessionRunAs"
+        }
+      }
+    },
+    {
+      "Sid": "NoRunAsSessionTag",
+      "Effect": "Deny",
+      "Action": "sts:TagSession",
+      "Resource": "*",
+      "Condition": {
+        "ForAnyValue:StringEquals": {
+          "aws:TagKeys": "SSMSessionRunAs"
+        }
+      }
+    }
+  ]
+}

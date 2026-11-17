@@ -1,0 +1,22 @@
+{
+  "schemaVersion": "1.0",
+  "description": "Spot demo: Session Manager preferences (SSM-SessionManagerRunShell). Run As each operator's own OS account (the SSMSessionRunAs tag; no default user, so an untagged principal gets no session), session data streamed to an encrypted CloudWatch Logs log group, 20 minute idle timeout",
+  "sessionType": "Standard_Stream",
+  "inputs": {
+    "s3BucketName": "",
+    "s3KeyPrefix": "",
+    "s3EncryptionEnabled": true,
+    "cloudWatchLogGroupName": "/spot-demo/session-manager",
+    "cloudWatchEncryptionEnabled": true,
+    "cloudWatchStreamingEnabled": true,
+    "kmsKeyId": "",
+    "runAsEnabled": true,
+    "runAsDefaultUser": "",
+    "idleSessionTimeout": "20",
+    "maxSessionDuration": "",
+    "shellProfile": {
+      "windows": "",
+      "linux": ""
+    }
+  }
+}

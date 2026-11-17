@@ -1,0 +1,82 @@
+# GitLab CI. Mirrors .github/workflows/ci.yml so the checks are the same wherever the
+# repository lives. Every image is pinned by digest (the tag alongside is for the
+# reader), from ECR Public's copy of the Docker official image.
+
+stages:
+  - test
+
+default:
+  interruptible: true
+  image: public.ecr.aws/docker/library/python:3.12-slim@sha256:aa943ce411423c7582288f18707ff66eddcbaeb510502d747a72aeb34f30d159
+
+workflow:
+  auto_cancel:
+    on_new_commit: interruptible
+
+tests:
+  stage: test
+  needs: []
+  variables:
+    # A slower scaled clock for the threaded mission tests on shared runners
+    # (tests/test_mission.py, SPOT_TEST_SLOWDOWN).
+    SPOT_TEST_SLOWDOWN: "2"
+  before_script:
+    # GitLab's Docker executor checks out under umask 0000, so every file is world-writable;
+    # give the checkout a normal clone's modes, which TestT28ContainerBoundaryPieces checks.
+    - chmod -R go-w .
+    # git and shasum (perl) for the script tests; bash is in the image.
+    # A command with ": " in it (pip's ":all: -r") is quoted, or YAML reads it as a mapping.
+    - apt-get update -qq && apt-get install -y -qq --no-install-recommends git perl >/dev/null
+    - python -m venv .venv
+    - '.venv/bin/pip install --no-cache-dir --require-hashes --no-deps --only-binary :all: -r tests/requirements-ci.lock'
+  script:
+    - .venv/bin/python -m unittest discover -s tests
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+checks:
+  stage: test
+  needs: []
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq --no-install-recommends git shellcheck >/dev/null
+  script:
+    - shellcheck --version
+    - scripts=$(git ls-files '*.sh') && test -n "$scripts"   # an empty list must fail, not pass
+    - shellcheck -x --severity=warning $scripts
+    - python scripts/check_citations.py --allow-missing-revisions docs/security/THREAT_MODEL.md
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+# Also run this job from a weekly pipeline schedule (CI/CD > Schedules), so a newly
+# published advisory against a locked package fails it even when nothing is pushed
+# (threat model T32).
+audit:
+  stage: test
+  needs: []
+  before_script:
+    # curl for the pinned gitleaks release; the slim image has sha256sum and tar.
+    - apt-get update -qq && apt-get install -y -qq --no-install-recommends curl >/dev/null
+    - python -m venv .audit
+    - '.audit/bin/pip install --no-cache-dir --require-hashes --no-deps --only-binary :all: -r tests/requirements-audit.lock'
+    # gitleaks pinned by release checksum, not by tag: a tag can be moved, a sha256 cannot.
+    - curl -sSfL -o /tmp/gitleaks.tar.gz https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz
+    - echo "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  /tmp/gitleaks.tar.gz" | sha256sum -c -
+    - tar -xzf /tmp/gitleaks.tar.gz -C /tmp gitleaks
+  script:
+    # The images install exactly these locks; --strict fails on a package the
+    # advisory databases cannot look up.
+    - .audit/bin/pip-audit --strict --disable-pip --require-hashes -r agent/requirements.lock -r hud/requirements.lock
+    # Every Medium this repository has is in tests/ (B103 executable-mode fakes, B108
+    # temp paths), so the shipped code is gated at Medium and the tests at High.
+    - .audit/bin/bandit -q -r . --exclude ./tests,./.audit --severity-level medium
+    - .audit/bin/bandit -q -r tests --severity-level high
+    # Working tree only: a CI clone is shallow, so a history scan here would cover an
+    # arbitrary depth. The published export's history is one commit and prepare.sh
+    # scans it (M34).
+    - /tmp/gitleaks dir . --no-banner --redact
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH

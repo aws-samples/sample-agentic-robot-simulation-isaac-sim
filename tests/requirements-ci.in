@@ -1,0 +1,14 @@
+# CI test dependencies: everything the agent and HUD images install, plus the
+# test client. Compiled into tests/requirements-ci.lock, constrained to the image
+# locks so CI tests exactly the versions that ship.
+-r ../agent/requirements.txt
+-r ../hud/requirements.txt
+# httpx2: Starlette's TestClient imports it first and deprecates plain httpx
+# (same author as httpx; source github.com/pydantic/httpx2).
+httpx2==2.16.0
+# numpy comes from apt (python3-numpy 1.26.4) in the images and with Isaac Sim;
+# CI pins the same release from PyPI for the sim modules' tests.
+numpy==1.26.4
+# defusedxml: test-only; tests/test_hardening_host.py parses the Fast DDS profile
+# the test generated with it, as the XML scanner rules advise. Not in the images.
+defusedxml==0.7.1

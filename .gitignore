@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+.evidence-archive/
+# Operator data never belongs in the repository (threat model T36): fetched host logs,
+# screen captures, local environment files and stray run records.
+logs/
+screens/
+.env
+.env.*
+*.log
+/*.jsonl
+# Session Manager exports and saved preferences, if written here by mistake (T36, T38).
+/session*.json
+/previous-preferences.json
+.venv*/

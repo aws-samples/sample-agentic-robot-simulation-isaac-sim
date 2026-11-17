@@ -1,0 +1,13 @@
+Agentic robot simulation with NVIDIA Isaac Sim
+Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+
+This project is licensed under the MIT No Attribution license (MIT-0); see LICENSE.
+
+It depends on, but does not include, third-party software distributed under its own
+licenses, including NVIDIA Isaac Sim, ROS 2 and the Python packages pinned in
+agent/ and hud/. Those dependencies are listed in THIRD-PARTY-LICENSES.
+
+Spot is a trademark of Boston Dynamics, Inc. NVIDIA and Isaac Sim are trademarks of
+NVIDIA Corporation. Both are named here only to identify the simulated robot asset and
+the simulator this sample runs on. This project is not affiliated with, endorsed by or
+sponsored by either company, and neither has reviewed or approved it.

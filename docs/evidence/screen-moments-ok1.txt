@@ -1,0 +1,7 @@
+moment probe      <- atmos_test_start   t=368.59686764499884 wall_t=1790527888.34 | capture 3.1 s rc=0 | Atmospheric test at (6.57, -0.00): O2 -> LEL -> H2S/CO (OSHA 1910.146 order), 4.
+moment fail       <- atmos_result       t=372.5640854099979 wall_t=1790527892.407 | capture 3.1 s rc=0 | Atmospheric test FAIL - H2S 51.4 ppm FAIL (limit < 10 ppm, worst at 0.2 m height
+moment retest     <- atmos_test_start   t=400.0988051310046 wall_t=1790527919.842 | capture 3.1 s rc=0 | Atmospheric test at (6.58, -0.03): O2 -> LEL -> H2S/CO (OSHA 1910.146 order), 4.
+moment purge-wait <- purge_incomplete   t=444.5947792639995 wall_t=1790527964.343 | capture 3.1 s rc=0 | Purge incomplete — wait: the gases read within limits at the door, but an earlie
+moment inside     <- waypoint           t=492.1580627849976 wall_t=1790528011.902 | capture 3.1 s rc=0 | Reached interior waypoint 1/5 (4.6, 0.0)
+moment completed  <- permit             t=584.202147593001 wall_t=1790528103.945 | capture 3.2 s rc=0 | Permit CSE-0428: ENTRY_IN_PROGRESS -> COMPLETED (entrant exited the permit space
+screen_watch done: ['completed', 'fail', 'inside', 'probe', 'purge-wait', 'retest']
