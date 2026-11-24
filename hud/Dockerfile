@@ -20,7 +20,7 @@
 # ECR Public's mirror of the Docker official image: the mirror's index digest
 # equals docker.io/library/ros:jazzy-ros-base's (checked 2026-10-29), so the
 # image is the same one the Docker Hub tag pointed to.
-FROM public.ecr.aws/docker/library/ros:jazzy-ros-base@sha256:00b8d47a6e6384a2834e3d01fa87ae767876543baa574f2d64a75c04ea33c698
+FROM public.ecr.aws/docker/library/ros:jazzy-ros-base@sha256:5147d3ae250ce754afd399f6bfec15b33dd4e473ca357e30432a3182031bfad6
 
 # The ROS base carries the C/C++ toolchain, and with it the kernel headers
 # (linux-libc-dev): over 300 High and Critical advisories with no fix in
